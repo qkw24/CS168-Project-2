@@ -14,19 +14,21 @@ class Sender(BasicSender.BasicSender):
             raise NotImplementedError #remove this line when you implement SACK
         self.sending_window = []
         self.window_start_number = 0
-        self.end_reached = False
+        self.end_reached = False #end of data stream
+        self.should_stop = False
         self.duplicate_count = 0
         self.next_msg = None
         self.cur_msg = None
 
     # Main sending loop.
     def start(self):
-        while not self.end_reached:
-            self.send_whole_window()
+        while not self.should_stop:
+            self.send__fill_the_window()
             response = self.receive(0.5)
             if response and Checksum.validate_checksum(response):
                 response_type, ack_num_str, data, checksum = self.split_packet(response)
                 ack_num = int(ack_num_str)
+                self.check_for_stop(ack_num)
                 if ack_num - self.window_start_number > 0:
                     self.handle_new_ack(ack_num)
                 else:
@@ -34,10 +36,11 @@ class Sender(BasicSender.BasicSender):
             else:
                 self.handle_timeout()
 
-    def send_whole_window(self):
+    def send__fill_the_window(self):
         allowance = 5 - len(self.sending_window)
         for i in range(0, allowance):
             self.read_stream()
+
             msg = self.cur_msg
             seq_no = self.window_start_number + len(self.sending_window) + i
             msg_type = self.get_msg_type(seq_no)
@@ -45,21 +48,25 @@ class Sender(BasicSender.BasicSender):
             packet = self.make_packet(msg_type, seq_no, msg)
             self.send(packet)
             self.sending_window.append(packet)
-            if msg_type == "end":
+
+            self.cur_msg = self.next_msg
+
+            if msg_type == "end": #can refactor this
                 break
 
-
-    def read_stream(self):
+    def read_stream(self): #peek the next data stream chunk, if next_msg is empty, that means it's the end
         self.cur_msg = self.infile.read(1372)
-
         self.next_msg = self.infile.read(1372)
-        if self.next_msg == "": self.end_of_stream = True
+        if self.next_msg == "": self.end_reached = True
 
     def get_msg_type(self, seq_no):
         if seq_no == 0: return 'start'
         if self.end_reached: return 'end'
         return 'data'
 
+    def check_for_stop(self, ack):
+        if ack - self.window_start_number == 1: #means received "end" ack
+            self.should_stop = True
 
     def handle_timeout(self):
         for p in self.sending_window:
@@ -75,7 +82,7 @@ class Sender(BasicSender.BasicSender):
         self.duplicate_count += 1
         if self.duplicate_count >= 3:
             self.send(self.sending_window[0])
-            self.duplicate_count = 0
+            self.duplicate_count = 0 #resets the counter
 
     def log(self, msg):
         if self.debug:
