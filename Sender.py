@@ -20,9 +20,14 @@ class Sender(BasicSender.BasicSender):
         self.next_msg = None
         self.cur_msg = None
 
+        self.end_ack_received = False
+        self.end_seq_no = -1
+
     # Main sending loop.
+
     def start(self):
-        while not self.should_stop:
+        """
+        while not self.end_ack_received:
             self.send__fill_the_window()
             response = self.receive(0.5)
             if response and Checksum.validate_checksum(response):
@@ -32,11 +37,31 @@ class Sender(BasicSender.BasicSender):
                 if ack_num - self.window_start_number > 0:
                     self.handle_new_ack(ack_num)
                 else:
-                    self.handle_dup_ack()
+                    self.handle_dup_ack(ack_num)
             else:
                 self.handle_timeout()
+        """
+        while not self.end_ack_received:
+            self.send__fill_the_window()
+            response = self.receive(0.5)
+            if response is None:
+                self.handle_timeout()
+            else:
+                if not Checksum.validate_checksum(response):
+                    self.handle_timeout()
+                    continue
+                response_type, ack_num_str, _, checksum = self.split_packet(response)
+                if response_type != "ack": continue
+                ack_num = int(ack_num_str)
+                if ack_num > self.window_start_number and ack_num <= self.window_start_number + len(self.sending_window):
+                    self.handle_new_ack(ack_num)
+                elif ack_num == self.window_start_number: #dupack
+                    self.handle_dup_ack(ack_num)
+
+        self.infile.close()
 
     def send__fill_the_window(self):
+        """
         allowance = 5 - len(self.sending_window)
         for i in range(0, allowance):
             self.read_stream()
@@ -44,6 +69,9 @@ class Sender(BasicSender.BasicSender):
             msg = self.cur_msg
             seq_no = self.window_start_number + len(self.sending_window) + i
             msg_type = self.get_msg_type(seq_no)
+
+            if msg_type == "end":
+                self.end_seq_no = int(seq_no)
 
             packet = self.make_packet(msg_type, seq_no, msg)
             self.send(packet)
@@ -54,10 +82,62 @@ class Sender(BasicSender.BasicSender):
             if msg_type == "end": #can refactor this
                 break
 
-    def read_stream(self): #peek the next data stream chunk, if next_msg is empty, that means it's the end
-        self.cur_msg = self.infile.read(1372)
+        """
+        #can check at main loop, use if to determine if we should send_fill or not
+        if self.end_seq_no is not -1:
+            return
+
+        used_window = len(self.sending_window)
+        free_space = 5 - used_window
+        for i in range(free_space):
+
+            if i == 0:
+                msg = self.infile.read(1372)
+                self.read_stream(1372)
+
+                seqno = self.window_start_number + used_window + i
+                msg_type = self.get_msg_type(seqno)
+                if msg_type == "end":
+                    self.end_seq_no = int(seqno)
+                packet = self.make_packet(msg_type, seqno, msg)
+                self.send(packet)
+                self.sending_window.append(packet)
+            else:
+
+                self.cur_msg = self.next_msg
+                self.read_stream(1372)
+
+                msg = self.cur_msg
+                seqno = self.window_start_number + used_window + i
+                msg_type = self.get_msg_type(seqno)
+                if msg_type == "end":
+                    self.end_seq_no = int(seqno)
+                packet = self.make_packet(msg_type, seqno, msg)
+                self.send(packet)
+                self.sending_window.append(packet)
+
+            if msg_type == "end":
+                break
+
+    def read_stream(self, buffer_size): #peek the next data stream chunk, if next_msg is empty, that means it's the end
+
+        #if self.end_reached:
+        #    self.cur_msg = ""
+        #    return
+
+        #self.cur_msg = self.infile.read(1372)
         self.next_msg = self.infile.read(1372)
         if self.next_msg == "": self.end_reached = True
+        """
+        if self.end_reached: return ""
+        if self.next_msg is None:
+            self.next_msg = self.infile.read(buffer_size)
+            if self.next_msg == "": return ""
+        msg = self.next_msg
+        self.next_msg = self.infile.read(buffer_size)
+        if self.next_msg == "": self.end_reached = True
+        return msg
+        """
 
     def get_msg_type(self, seq_no):
         if seq_no == 0: return 'start'
@@ -73,6 +153,9 @@ class Sender(BasicSender.BasicSender):
             self.send(p)
 
     def handle_new_ack(self, ack):
+        if (self.end_seq_no + 1 == ack):
+            self.end_ack_received = True
+
         items_to_remove = ack - self.window_start_number
         for i in range(0, items_to_remove):
             self.sending_window.pop(0)
@@ -80,9 +163,9 @@ class Sender(BasicSender.BasicSender):
 
     def handle_dup_ack(self, ack):
         self.duplicate_count += 1
-        if self.duplicate_count >= 3:
+        if self.duplicate_count == 3:
             self.send(self.sending_window[0])
-            self.duplicate_count = 0 #resets the counter
+            #self.duplicate_count = 0 #resets the counter
 
     def log(self, msg):
         if self.debug:
