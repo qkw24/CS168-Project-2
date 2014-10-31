@@ -15,7 +15,7 @@ class Sender(BasicSender.BasicSender):
         self.sending_window = []
         self.window_start_number = 0
         self.end_reached = False #end of data stream
-        self.expected_end_ack = {}
+        self.expected_end_ack = {} #{sequence_number : expected_ack}
         self.should_stop_transmission = False
         self.duplicate_count = 0
         self.next_msg = None
@@ -33,6 +33,9 @@ class Sender(BasicSender.BasicSender):
                 response_type, ack_num_str, data, checksum = self.split_packet(response)
                 ack_num = int(ack_num_str)
                 self.check_for_stop(ack_num)
+
+                #checks for out of order acks
+                #if ack_num is smaller than current window, then better ignore it, but we didn't
                 if ack_num - self.window_start_number > 0:
                     self.handle_new_ack(ack_num)
                 else:
@@ -43,32 +46,30 @@ class Sender(BasicSender.BasicSender):
         #self.infile.close()
 
     def send__fill_the_window(self, allowance, occupied_capacity):
-        for i in range(0, allowance):
-            #if not self.end_reached:
-            if i == 0:
+        for pos in range(0, allowance):
+            if pos == 0:
                 self.cur_msg = self.infile.read(1372)
                 self.peek_next()
             else:
                 self.cur_msg = self.next_msg
                 self.peek_next()
 
-            self.create_packet(i, occupied_capacity)
+            self.create_packet(pos, occupied_capacity)
 
     def peek_next(self): #peek the next data stream chunk, if next_msg is empty, that means it's the end
         self.next_msg = self.infile.read(1372)
         if self.next_msg == "":
             self.end_reached = True
 
-    def create_packet(self, i, occupied_capacity):
+    def create_packet(self, packet_position, occupied_capacity):
         msg = self.cur_msg
-        seqno = self.window_start_number + occupied_capacity + i
-        # msg_type = self.get_msg_type(seqno)
+        seqno = self.window_start_number + occupied_capacity + packet_position
+
         if seqno == 0:
             msg_type = 'start'
         elif self.end_reached:
             self.expected_end_ack[seqno] = seqno + 1
             msg_type = 'end'
-            #self.end_seq_no = int(seqno)
         else:
             msg_type = 'data'
         packet = self.make_packet(msg_type, seqno, msg)
@@ -93,7 +94,6 @@ class Sender(BasicSender.BasicSender):
         self.duplicate_count += 1
         if self.duplicate_count == 3:
             self.send(self.sending_window[0])
-            #self.duplicate_count = 0 #resets the counter
 
     def log(self, msg):
         if self.debug:
