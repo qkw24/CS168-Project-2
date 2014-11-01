@@ -10,9 +10,9 @@ This is a skeleton sender class. Create a fantastic transport protocol here.
 class Sender(BasicSender.BasicSender):
     def __init__(self, dest, port, filename, debug=False, sackMode=False):
         super(Sender, self).__init__(dest, port, filename, debug)
-        if sackMode:
-            raise NotImplementedError #remove this line when you implement SACK
-        self.sending_window = []
+        # if sackMode:
+        #     raise NotImplementedError #remove this line when you implement SACK
+        self.sending_window = [] #list of dictionaries [{seq_no : packet}, ...]
         self.window_start_number = 0
         self.end_reached = False #end of data stream
         self.expected_end_ack = {} #{sequence_number : expected_ack}
@@ -20,6 +20,7 @@ class Sender(BasicSender.BasicSender):
         self.duplicate_count = 0
         self.next_msg = None
         self.cur_msg = None
+        self.received = None
 
     # Main sending loop.
 
@@ -31,7 +32,15 @@ class Sender(BasicSender.BasicSender):
             response = self.receive(0.5)
             if response and Checksum.validate_checksum(response):
                 response_type, ack_num_str, data, checksum = self.split_packet(response)
-                ack_num = int(ack_num_str)
+
+                if response_type == "sack":
+                    #print "SACK got!"
+                    #print ack_num_str
+                    ack_num = int(ack_num_str.split(';')[0])
+                    self.received = ack_num_str.split(';')[1].split(',')
+                else:
+                    ack_num = int(ack_num_str)
+
                 self.check_for_stop(ack_num)
 
                 #checks for out of order acks
@@ -41,7 +50,7 @@ class Sender(BasicSender.BasicSender):
                 else:
                     self.handle_dup_ack(ack_num)
             else:
-                self.handle_timeout()
+                self.handle_timeout(self.received)
 
         #self.infile.close()
 
@@ -74,15 +83,18 @@ class Sender(BasicSender.BasicSender):
             msg_type = 'data'
         packet = self.make_packet(msg_type, seqno, msg)
         self.send(packet)
-        self.sending_window.append(packet)
+        self.sending_window.append({seqno : packet})
 
     def check_for_stop(self, ack):
         if ack in self.expected_end_ack.values():
             self.should_stop_transmission = True
 
-    def handle_timeout(self):
-        for p in self.sending_window:
-            self.send(p)
+    def handle_timeout(self, received=None):
+        if received:
+            self.send_unacked_packets()
+        else:
+            for p in self.sending_window:
+                self.send(p.values()[0])
 
     def handle_new_ack(self, ack):
         items_to_remove = ack - self.window_start_number
@@ -92,8 +104,14 @@ class Sender(BasicSender.BasicSender):
 
     def handle_dup_ack(self, ack):
         self.duplicate_count += 1
-        if self.duplicate_count == 3:
-            self.send(self.sending_window[0])
+        if self.duplicate_count >= 3:
+            self.send(self.sending_window[0].values()[0])
+            self.duplicate_count = 0
+
+    def send_unacked_packets(self):
+        for i in self.sending_window:
+            if str(i.keys()[0]) not in self.received:
+                self.send(i.values()[0])
 
     def log(self, msg):
         if self.debug:
