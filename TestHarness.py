@@ -16,21 +16,19 @@ forwarder, so they will magically be run.
 """
 def tests_to_run(forwarder):
     from tests import BasicTest, CorruptTest, DelayTest, DropFirstPacketsTest, DropStartAckTest, NonAckTest, RandomCorruptTest, RandomDelayTest, RandomDropTest, RandomDuplicateTest, RandomReorderTest, StartAndEndTest, SackRandomDropTest
-    BasicTest.BasicTest(forwarder, "README")
-    RandomDropTest.RandomDropTest(forwarder, "README")
-    CorruptTest.CorruptTest(forwarder, "README")
-    DelayTest.DelayTest(forwarder, "README")
-    DropFirstPacketsTest.DropFirstPacketsTest(forwarder, "README")
-    DropStartAckTest.DropStartAckTest(forwarder, "README")
-    NonAckTest.NonAckTest(forwarder, "README")
-    RandomCorruptTest.RandomCorruptTest(forwarder, "README")
-    RandomDelayTest.RandomDelayTest(forwarder, "README")
-    RandomDuplicateTest.RandomDuplicateTest(forwarder, "README")
-    RandomReorderTest.RandomReorderTest(forwarder, "README")
-    StartAndEndTest.StartAndEndTest(forwarder, "README")
-
-
-    #SackRandomDropTest.SackRandomDropTest(forwarder, "README")
+    # BasicTest.BasicTest(forwarder, "iphone6.zip")
+    # RandomDropTest.RandomDropTest(forwarder, "dog.jpg")
+    # CorruptTest.CorruptTest(forwarder, "dog.jpg")
+    # DelayTest.DelayTest(forwarder, "dog.jpg")
+    # DropFirstPacketsTest.DropFirstPacketsTest(forwarder, "dog.jpg")
+    # DropStartAckTest.DropStartAckTest(forwarder, "dog.jpg")
+    # NonAckTest.NonAckTest(forwarder, "dog.jpg")
+    # RandomCorruptTest.RandomCorruptTest(forwarder, "dog.jpg")
+    # RandomDelayTest.RandomDelayTest(forwarder, "README")
+    # RandomDuplicateTest.RandomDuplicateTest(forwarder, "dog.jpg")
+    # RandomReorderTest.RandomReorderTest(forwarder, "dog.jpg")
+    #
+    # SackRandomDropTest.SackRandomDropTest(forwarder, "dog.jpg")
 """
 Testing is divided into two pieces: this forwarder and a set of test cases in
 the tests directory.
